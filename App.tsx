@@ -62,8 +62,25 @@ import { INITIAL_JOBS, INITIAL_CANDIDATES, STATUS_LABELS } from './constants';
 import { analyzeJD, JDAnalysis, matchTalentToJob, TalentMatchResult, parseResumeData } from './geminiService';
 
 const App: React.FC = () => {
-  const [jobs, setJobs] = useState<JobDemand[]>(INITIAL_JOBS);
-  const [candidates, setCandidates] = useState<Candidate[]>(INITIAL_CANDIDATES);
+  // Initialize state from localStorage if available, otherwise use defaults
+  const [jobs, setJobs] = useState<JobDemand[]>(() => {
+    const saved = localStorage.getItem('hireflow_jobs');
+    return saved ? JSON.parse(saved) : INITIAL_JOBS;
+  });
+  const [candidates, setCandidates] = useState<Candidate[]>(() => {
+    const saved = localStorage.getItem('hireflow_candidates');
+    return saved ? JSON.parse(saved) : INITIAL_CANDIDATES;
+  });
+
+  // Persist data whenever it changes
+  useEffect(() => {
+    localStorage.setItem('hireflow_jobs', JSON.stringify(jobs));
+  }, [jobs]);
+
+  useEffect(() => {
+    localStorage.setItem('hireflow_candidates', JSON.stringify(candidates));
+  }, [candidates]);
+
   const [activeTab, setActiveTab] = useState<'jobs' | 'pipeline' | 'talent-pool' | 'dashboard'>('dashboard');
   const [selectedJobId, setSelectedJobId] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');

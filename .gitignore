@@ -22,3 +22,13 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local Env Files
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Sandbox
+mobile-sandbox/
+
