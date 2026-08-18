@@ -61,7 +61,7 @@ import {
 } from 'lucide-react';
 import { JobDemand, Candidate, CandidateStatus, JobType, StageStatus, CandidateNote } from './types';
 import { INITIAL_JOBS, INITIAL_CANDIDATES, STATUS_LABELS } from './constants';
-import { analyzeJD, JDAnalysis, matchTalentToJob, TalentMatchResult, parseResumeData } from './geminiService';
+import { analyzeJD, JDAnalysis, matchTalentToJob, TalentMatchResult, parseResumeData, isSupportedResumeType, MAX_RESUME_FILE_BYTES } from './aiService';
 
 const App: React.FC = () => {
   // Initialize state from localStorage if available, otherwise use defaults
@@ -441,26 +441,41 @@ const App: React.FC = () => {
       const file = e.target.files[0];
       setCandidateForm(prev => ({ ...prev, resumeFile: file }));
 
-      // Supported for multimodal parsing: PDF and Images
-      const isParsable = file.type === 'application/pdf' || file.type.startsWith('image/');
-      
-      if (isParsable) {
-        setIsParsingResume(true);
-        const reader = new FileReader();
-        reader.onload = async () => {
-          const base64 = (reader.result as string).split(',')[1];
-          const parsed = await parseResumeData(base64, file.type);
-          if (parsed) {
-            setCandidateForm(prev => ({
-              ...prev,
-              name: parsed.name || prev.name,
-              contactInfo: parsed.contactInfo || prev.contactInfo
-            }));
-          }
-          setIsParsingResume(false);
-        };
-        reader.readAsDataURL(file);
+      // Attaching a resume and auto-filling from it are separate concerns. A file
+      // that cannot be parsed is still kept as an attachment; only the auto-fill
+      // step is skipped.
+
+      // Checked against the same list the proxy enforces, so an unsupported type
+      // is skipped locally instead of being uploaded and refused with a 415.
+      if (!isSupportedResumeType(file.type)) return;
+
+      // Checked before reading the file: an oversized upload would otherwise be
+      // base64-encoded and sent in full only to be rejected server-side. Unlike
+      // an unsupported type, this limit is invisible to the user, so say so.
+      if (file.size > MAX_RESUME_FILE_BYTES) {
+        alert(`简历文件超过 ${Math.round(MAX_RESUME_FILE_BYTES / 1024 / 1024)} MB，已作为附件保存，但无法智能识别，请手动填写姓名和联系方式。`);
+        return;
       }
+
+      setIsParsingResume(true);
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64 = (reader.result as string).split(',')[1];
+        const parsed = await parseResumeData(base64, file.type);
+        if (parsed) {
+          setCandidateForm(prev => ({
+            ...prev,
+            name: parsed.name || prev.name,
+            contactInfo: parsed.contactInfo || prev.contactInfo
+          }));
+        }
+        setIsParsingResume(false);
+      };
+      reader.onerror = () => {
+        // Without this the spinner would spin forever on an unreadable file.
+        setIsParsingResume(false);
+      };
+      reader.readAsDataURL(file);
     }
   };
 
