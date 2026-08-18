@@ -25,5 +25,11 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  // Server-side Edge Functions run on Deno (URL imports, `Deno` global) and are
+  // type-checked separately via `deno check`. Excluding them keeps the frontend
+  // `tsc --noEmit` check meaningful.
+  "exclude": [
+    "supabase"
+  ]
 }
