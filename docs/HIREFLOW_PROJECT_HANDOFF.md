@@ -1,7 +1,7 @@
 # HireFlow 项目交接文档
 
 > 面向**接管本项目的新 AI 会话**。读完本文即可开始工作，不需要重新全量扫描代码库。
-> 最后更新：2026-08-18（AI 服务端代理 · 任务 1a+1b 完成并验收：代理已部署且云端验证通过，**前端尚未切换，代码尚未提交**）
+> 最后更新：2026-08-18（AI 服务端代理 · 任务 1a+1b 已提交为 `2f899cc`；**任务 2 前端已切到代理，改动待验收未提交**）
 
 ## 0. 新会话接管顺序
 
@@ -64,7 +64,8 @@
 ```
 React 19 + TypeScript + Vite 6
 Tailwind CSS（CDN <script>，非构建集成）+ lucide-react
-@google/genai（Gemini，浏览器端直连，无代理）  ← 前端仍在用，任务 2 才切换
+AI 调用：`aiService.ts` → 自己的 Edge Function（**已无浏览器端直连**）
+        `@google/genai` 依赖与 importmap 条目仍在 `package.json` / `index.html`，但**已无任何源码引用** → 任务 3 清理
 Capacitor 8 → iOS / Android 原生壳
 数据层：localStorage（key: hireflow_jobs / hireflow_candidates）
 后端：Supabase（org `HireFlow` / project `hireflow-core`，Free Plan）
@@ -72,7 +73,7 @@ Capacitor 8 → iOS / Android 原生壳
       无 DB 表、无 Auth、无 Storage
 ```
 
-⚠️ 注意当前是**过渡状态**：服务端代理已经在线可用，但**前端还没切过去**，仍走浏览器直连 Gemini。两条路并存，任务 2 才会真正切换并拔掉泄漏根因。
+✅ 任务 2 完成后**前端已切到代理**：浏览器不再与 Google 直接通信（构建产物中已无 `generativelanguage.googleapis.com`），客户端不含任何 Provider 概念。唯一进入 bundle 的两个值是代理 URL 与 publishable key，**两者设计上都是公开的**。
 
 架构只有一层：**纯前端单体**。全部业务逻辑、状态、UI 都在 `App.tsx` 一个文件（1719 行）。无组件拆分、无路由、无状态管理库、无数据访问层。持久化是 `App.tsx:68-84` 两个 `useEffect` 全量 `JSON.stringify` 写入。约 40 个 `useState`。
 
@@ -87,13 +88,15 @@ Capacitor 8 → iOS / Android 原生壳
 | `App.tsx` | 1719 行，整个应用（状态 + 逻辑 + 全部 UI + 4 个模态框） |
 | `types.ts` | 领域模型全部定义在此 |
 | `constants.tsx` | 种子数据 `INITIAL_JOBS` / `INITIAL_CANDIDATES` + `STATUS_LABELS` |
-| `geminiService.ts` | 4 个 Gemini 调用函数 |
-| `vite.config.ts` | ⚠️ `:13-16` 用 `define` 把 API key 明文内联进 bundle |
+| `aiService.ts` | 4 个 AI 调用函数，**走自己的代理**，不含任何 Provider 概念（任务 2 由 `geminiService.ts` 改写而来） |
+| `env.d.ts` | `import.meta.env` 的类型声明。**必需**：tsconfig 用 `types:["node"]` 且未引 `vite/client` |
+| `.env.example` | 前端环境变量模板（占位符），`.gitignore:33` 已显式允许提交 |
+| `vite.config.ts` | ✅ 内联 key 的 `define` 已删除（任务 2） |
 | `index.html` | Tailwind CDN、importmap 残留、引用了不存在的 `/index.css` |
 | `capacitor.config.ts` | appId `com.hireflow.app`，webDir `dist` |
 | `android/` `ios/` | Capacitor 原生工程，已纳入版本控制 |
 | `tsconfig.json` | ⚠️ 已加 `exclude: ["supabase"]`，否则前端 `tsc --noEmit` 会因 Deno 全局报错 |
-| `supabase/functions/ai-proxy/` | 服务端 AI 代理，三层结构，见第 15 节。**已部署上线，但代码未提交** |
+| `supabase/functions/ai-proxy/` | 服务端 AI 代理，三层结构，见第 15 节。已部署上线，已提交（`2f899cc`） |
 
 ---
 
@@ -166,7 +169,7 @@ PlatformStats    platform count                            ← 未实现
 
 **设计系统 —— 最强资产，但目前全是复制粘贴。** 4 处模态框共用同一骨架（`fixed inset-0 bg-slate-900/60 backdrop-blur-sm` + `rounded-3xl shadow-2xl animate-in zoom-in` + 彩色头部条 + 右上 X）；空状态（`border-2 border-dashed` + 淡化图标）重复约 5 次；另有统计卡片网格、带计数徽章的分区标题、看板列与卡片、侧边栏外壳。**不抽成组件，分叉后复制粘贴翻倍。**
 
-**AI 层（`geminiService.ts` 整体）** — 调用范式统一（`responseMimeType: "application/json"` + `responseSchema` + try/catch 兜空值）：
+**AI 层（`aiService.ts` 整体，任务 2 后）** — 调用范式统一（`callTask(任务名, 输入)` + try/catch 兜空值）。**分叉时这一层的共享价值比原先更高**：客户端已不含任何 Provider 概念，两版可共用同一个代理，只在服务端按需扩展任务或 Provider：
 - `parseResumeData` 机制 100% 共享，猎头版只需换 schema 提取更多字段
 - `analyzeJD` 共享（目前**从未被调用**）
 - `generateInterviewQuestions` 共享（目前**连 import 都没有**）
@@ -225,22 +228,28 @@ upstream tracking 已设置，`git push` 无需再带 `-u`。⚠️ 但按第 13
 git status --short →  M docs/HIREFLOW_PROJECT_HANDOFF.md
                       M tsconfig.json
                      ?? supabase/
-HEAD: e4616e1（与 origin/main 同步）
+HEAD: 2f899cc（ahead origin/main 1，未 push）
 tsc --noEmit: 通过（已 exclude supabase/）
-deno check supabase/functions/ai-proxy/index.ts: 通过
+deno check（5 个服务端文件）: 通过
+npm run build: 通过，产物 283,563 字节，无任何 key
 ```
 
-⚠️ **任务 1a + 1b 的全部成果都还没提交。** 未提交的改动只有三项：
+**已提交的正式回退基线：`2f899cc`** —— `feat: add provider-agnostic Supabase AI proxy`，9 个文件、+1543/−26，含 `supabase/` 全部 7 个文件、`tsconfig.json`、本文档。已扫描确认无任何 secret/token 进入历史。任务 2 若需放弃，`git reset --hard 2f899cc` 可回到「前端未切换、云端代理正常、两条路并存」的干净状态。
+
+⚠️ **任务 2 的改动待验收，尚未提交**（6 项）：
 
 | 改动 | 说明 |
 |---|---|
-| 新增 `supabase/`（7 个文件） | 服务端代理，见第 15 节。**云端已部署**，但代码未进版本控制 |
-| `tsconfig.json` 加 `exclude: ["supabase"]` | **必需**，否则服务端 Deno 文件会让前端 `tsc --noEmit` 报 4 处 `Cannot find name 'Deno'` |
-| 本文档更新 | — |
+| 新增 `aiService.ts` | 客户端 AI 层，`fetch` 调用自己的代理，四个导出函数签名与旧版**完全一致** |
+| 删除 `geminiService.ts` | 已被上面那个文件取代。可用 `git show 2f899cc:geminiService.ts` 找回 |
+| 新增 `env.d.ts` | `import.meta.env` 类型声明，**必需**，否则 `tsc` 报错 |
+| 新增 `.env.example` | 环境变量模板，之前缺失，无人知道要配哪几个变量 |
+| `vite.config.ts` 删掉 `define` 两行 | **这是 P0-1 泄漏根因的拔除动作**，同时不再需要 `loadEnv` |
+| `App.tsx` 改 2 处 | `:64` 换 import；`handleFileChange` 加大小/类型校验与 `reader.onerror` |
 
-注意一个反直觉的状态：**云端已经在跑的代码，本地还没 commit**。如果工作区丢失，需要用 `npx supabase functions download ai-proxy` 找回，或重写。**建议尽早提交。**
+`.env.local`（gitignored，权限 600）已重写：移除已吊销的 `GEMINI_API_KEY`，改为 `VITE_AI_PROXY_URL` + `VITE_SUPABASE_PUBLISHABLE_KEY`。
 
-**前端与生产配置至今完全未动**（每轮都用 `git diff` 复核）：`App.tsx`、`geminiService.ts`、`vite.config.ts`、`package.json`、`package-lock.json`、`index.html` 六个文件零改动。App 当前行为与 Git 基线阶段完全一致，仍走浏览器直连 Gemini 的旧路径。
+**前端行为变化**：App 不再直连 Gemini，全部 AI 调用走 `https://<ref>.supabase.co/functions/v1/ai-proxy`。构建产物中**已无任何 key**（旧产物 539,903 字节含 1 处内联 key，新产物 283,563 字节零 key，且不含 `generativelanguage.googleapis.com`）。
 
 磁盘上存在但被正确忽略：`.env.local`（key 已吊销）、`dist/`、`android/app/src/main/assets/public/`、`ios/App/App/public/`。
 
@@ -250,12 +259,14 @@ deno check supabase/functions/ai-proxy/index.ts: 通过
 
 ### P0 — 安全 / 数据丢失级
 
-**1. API key 前端内联机制未修（泄漏根因）** —— 🔧 **修复进行中，任务 2 完成即解决，见第 12 节**
-`vite.config.ts:13-16` 用 `define` 把 `GEMINI_API_KEY` 明文内联进 bundle。旧 key 已被用户吊销，但**机制未改，下一个 key 会以完全相同方式泄漏**。凡前端直连 LLM 的架构必然如此——key 没有藏身之处。
+**1. API key 前端内联机制** —— ✅ **机制已拔除（任务 2，待提交）**
+原 `vite.config.ts:13-16` 用 `define` 把 `GEMINI_API_KEY` 明文内联进 bundle。**这两行已删除**，`geminiService.ts` 已被 `aiService.ts` 取代，前端改为调用自己的 Edge Function。
 
-服务端代理已部署并验证可用（任务 1a + 1b），但**这两行 `define` 还在，前端仍走直连**。**本条到任务 2 完成才算解决。**
+实测证据（不是推断）：新构建产物 283,563 字节，扫描 `AIza…` / `eyJ…` / `sb_secret_` / `service_role` / `GEMINI_API_KEY` **全部零命中**，且**不含 `generativelanguage.googleapis.com`** —— 客户端已不再与 Google 直接通信。对比旧产物 539,903 字节含 1 处内联 key。
 
-现状的一个好处：新 key 从一开始就只存在于 Supabase Secrets，**从未接触前端代码，也从未进入 Git 历史**。所以任务 2 不是"把 key 搬走"，而是"把前端那条直连路径拆掉"。
+新 key 从一开始就只存在于 Supabase Secrets，**从未接触前端代码，也从未进入 Git 历史**。所以任务 2 做的不是"把 key 搬走"，而是"把前端那条直连路径拆掉"。
+
+⚠️ 仍未清理：磁盘上 `dist/`（已被本轮重建覆盖，现为干净产物）与**两个原生 `public/` 目录仍各有 1 个文件含已吊销的旧 key** → 见 P2 最后一条与第 12 节任务 4。
 
 **2. 简历附件其实没有保存 —— 功能性 bug**
 `App.tsx:366` 用 `URL.createObjectURL(file)` 生成 blob URL 存进记录。blob URL 生命周期绑定当前页面会话，**刷新即失效**。看板与人才库的简历链接下次打开全是死链，文件本体从未持久化。对猎头产品而言简历库就是全部资产。
@@ -267,9 +278,9 @@ deno check supabase/functions/ai-proxy/index.ts: 通过
 `App.tsx:518-534` 只判断 `Array.isArray` 就整体覆盖现有数据。**无确认弹窗、无备份、不可撤销**。备份/恢复功能本身成了最大的数据丢失来源。
 
 **5. 候选人 PII 无保护**
-姓名/电话/邮箱/简历明文存 localStorage，任何本机脚本或扩展可读；简历 base64 直传 Gemini（`App.tsx:451-452`）。猎头产品受 GDPR/个保法约束，需告知同意、保留期限、删除权 —— 目前全无。
+姓名/电话/邮箱/简历明文存 localStorage，任何本机脚本或扩展可读。猎头产品受 GDPR/个保法约束，需告知同意、保留期限、删除权 —— 目前全无。
 
-任务 2 之后简历会改为流经自己的 Edge Function（服务端已确保不记录请求体，见第 15 节），**但 localStorage 明文存储与合规缺失两项不受影响，仍然成立**。
+任务 2 后简历 base64 已改为流经自己的 Edge Function（服务端不记录请求体，已由用户在网页后台人工核查日志确认），**但 localStorage 明文存储与合规缺失两项不受影响，仍然完全成立**。简历数据依然会落到 Google，只是路径从"浏览器直发"变成"经我们的服务器转发"——**这改变的是 key 的暴露面，不是 PII 的流向**。
 
 **6. AI 代理端点已公网可访问，钱包兜底只剩 Provider 侧额度上限**（2026-08-18 新增）
 `ai-proxy` 已部署上线（URL 见第 12 节）。`verify_jwt = true` 拦住了无凭证请求，**但 anon key 设计上就是公开的，这不构成身份验证** —— 详见第 15 节安全姿态。
@@ -286,8 +297,10 @@ deno check supabase/functions/ai-proxy/index.ts: 通过
 - **仪表盘一半是假数据**：`App.tsx:665` 「本年度目标 24/50」、`:682-683` 「42%」「同比上月提升 5%」全硬编码；`:695-697` 「生成最新诊断」按钮**没有 onClick**
 - **AI 人才对标输入太薄**：只传 name + notes，不传简历内容/来源/历史面评，实际是在给备注打分
 - **人才库部门分组基本失效**：直接入库的储备人才无 `jobId`，全落进「储备池 (未分配)」一个桶
-- **AI 调用失败完全静默**（2026-08-18 记录，用户已指定为后续任务）：`geminiService.ts` 四个函数全部 `try/catch` 吞异常后返回空值（`null` / `[]`）。离线或出错时用户看到的是「点了没反应」，无任何提示。改服务端代理后**失败点从一个变两个**（Google 挂 + 自己的代理挂），本条重要性上升。代理已定义好中性错误码（`PROVIDER_TIMEOUT` / `PROVIDER_RATE_LIMITED` / `SERVER_MISCONFIGURED` 等）供前端区分展示，**但前端目前还没消费它们**
-- **前端上传文件无大小校验**：`App.tsx:439-465` 对任意大小文件直接 `readAsDataURL` 读进内存转 base64。计划在任务 2 加客户端闸门（服务端闸门已在代理中实现）
+- **AI 调用失败仍然静默**（2026-08-18 记录，用户已指定为后续任务）：`aiService.ts` 四个函数**依然** `try/catch` 吞异常后返回空值（`null` / `[]`）。这是任务 2 的**有意选择**——保持与旧实现完全一致的兜底行为，让本轮改动对调用方行为中立，避免同时改架构又改交互。离线或出错时用户看到的仍是「点了没反应」。
+
+  任务 2 已经把**前置条件铺好了**：`aiService.ts` 导出 `AiServiceError`（带 `code` / `httpStatus`）与 `AiErrorCode` 联合类型，涵盖代理的 10 个中性错误码 + 客户端两个（`NOT_CONFIGURED` / `NETWORK_ERROR`）。要做提示，只需把四个函数的 `catch` 改成向上抛、由 `App.tsx` 决定展示，**不需要改传输层**。失败点现在确实是两个（Google 挂 + 自己的代理挂），本条重要性继续上升
+- ~~**前端上传文件无大小校验**~~ —— ✅ **任务 2 已修**：`handleFileChange` 现在在 `readAsDataURL` **之前**校验类型与大小（4 MB，`MAX_RESUME_FILE_BYTES`），并补了 `reader.onerror`（此前文件读取失败会让 spinner 永久旋转）。设计取舍：超限/不支持的文件**仍作为附件保存**，只跳过 AI 识别——附件与识别是两件事，拦住附件属于功能回退
 
 ### P2 — 细节缺陷（均已确认）
 
@@ -296,7 +309,7 @@ deno check supabase/functions/ai-proxy/index.ts: 通过
 - 全部 id 用 `Date.now()`，同毫秒批量操作会撞 ID → 建议 `crypto.randomUUID()`
 - 所有确认交互用 `window.confirm`/`alert`，Capacitor 原生 WebView 内体验与样式不受控
 - `App.tsx:1092` 的 `[string, any[]]` 类型标注放松了类型安全（`people`/`c` 退化为 `any`，该块内 Candidate 字段访问不再受检）→ 待收紧为 `[string, Candidate[]]`
-- 磁盘上 `dist/` 与两个原生 `public/` 仍有含已吊销 key 的旧产物 → 建议在做服务端代理那轮一并清理（删除文件需用户确认）
+- **两个原生 `public/` 各有 1 个文件含已吊销的旧 key**（`ios/App/App/public/`、`android/app/src/main/assets/public/`，已实测确认）→ 任务 4 清理，删除文件需用户确认。`dist/` 已在任务 2 重建为干净产物（且 `.gitignore:22` 已忽略）
 
 ---
 
@@ -330,11 +343,11 @@ https://hireflow-talentpool.netlify.app     Public，HTTP 200，仍在线
 | 0 | 用户后台准备：建 Supabase org/project、申请新 Gemini key、设额度上限、key 存入 Secrets | ✅ 已完成 |
 | 1a | 服务端骨架（三层结构 + 本地可验证部分全部验证） | ✅ 已完成并验收 |
 | 1b | 部署到 Supabase + 云端真实 Gemini 调用验证 | ✅ **已完成并验收（2026-08-18）** |
-| 2 | 前端切到代理：改 `geminiService.ts`、删 `vite.config.ts:13-16`、加上传大小限制 | ⏸ **下一步，待用户批准** |
-| 3 | 清理：移除 `@google/genai`、清 `index.html` importmap 残留、更新 README | ⏸ 未开始 |
-| 4 | 删除含已吊销 key 的旧产物（`dist/` + 两个原生 `public/`），需单独确认 | ⏸ 未开始 |
+| 2 | 前端切到代理：`aiService.ts` 取代 `geminiService.ts`、删 `vite.config.ts` 的 `define`、加上传校验 | ✅ **已完成，待用户验收**（2026-08-18） |
+| 3 | 清理：移除 `@google/genai` 依赖、清 `index.html:20` importmap 残留、更新 README | ⏸ **下一步** |
+| 4 | 删除含已吊销 key 的旧产物（两个原生 `public/`），需单独确认 | ⏸ 未开始 |
 
-⚠️ **代码全部未提交**（任务 1a + 1b 的成果都在工作区）。见第 9 节。
+**提交状态**：任务 1a + 1b 已提交为 `2f899cc`（正式回退基线）。任务 2 改动在工作区，待验收。见第 9 节。
 
 ### 任务 0 已完成的事实（不要重复问用户）
 
@@ -388,20 +401,20 @@ project ref  dqntdqowwhhbbdblxcyj      region ap-southeast-1    ACTIVE_HEALTHY
 
 ### 下一位 AI 应该从哪里开始
 
-**任务 2：把前端切到代理。** 这是拔掉泄漏根因（`vite.config.ts:13-16`）的那一步。已知需要做的：
+**任务 3：清理 Gemini 直连的残留。** 任务 2 已经把路径切走了，但依赖与 CDN 引用还在：
 
-1. 改 `geminiService.ts` 内部实现为 `fetch` 调用代理，**四个导出函数签名保持不变**（`App.tsx` 不用动），并建议改名为中性的 `aiService.ts`
-2. 删 `vite.config.ts:13-16` 两行 `define`，改用 `import.meta.env.VITE_AI_PROXY_URL`
-3. `.env.local` 移除 `GEMINI_API_KEY`（磁盘上那把已吊销），新增代理地址与 anon key
-4. **前端加上传文件大小校验**（`App.tsx:439-465` 目前完全没有）
-5. **前后端 MIME 白名单对齐**：`App.tsx:445` 接受任意 `image/*`，服务端白名单是 pdf/png/jpeg/webp/heic/heif，gif/bmp 会被服务端 415 拒绝
+1. `package.json:26` 移除 `@google/genai` 依赖（**已无任何源码引用**，实测确认），跑 `npm install` 更新 lockfile
+2. `index.html:20` 删掉 importmap 里的 `@google/genai` esm.sh 条目（该 importmap 整体是残留，构建走 npm 那套）
+3. 更新 README：说明 AI 走服务端代理、需要配哪两个 `VITE_` 变量（`.env.example` 已可直接引用）
 
-⚠️ 任务 2 触及 `vite.config.ts`（生产配置）与 `App.tsx`，按第 13 节**开始前需用户再确认一次**。
+删依赖按第 13 节需用户确认。做完建议重新 `npm run build` 并复扫产物。
 
-⚠️ **本机到 Gemini 的出网被阻断**（`curl generativelanguage.googleapis.com` → HTTP 000，与第 11 节同一网络限制）。**但这不影响任务 2** —— 前端只需要连 Supabase（实测可达），Gemini 那一跳由云端函数完成。
+⚠️ **任务 2 已知遗留（不是 bug，是有意选择）**：AI 失败仍然静默兜空值。`aiService.ts` 已导出 `AiServiceError` + `AiErrorCode`，做提示时不需要改传输层。见第 10 节 P1 第一条。
+
+⚠️ **本机到 Gemini 的出网被阻断**（`curl generativelanguage.googleapis.com` → HTTP 000，与第 11 节同一网络限制）。**这不影响前端开发** —— 前端只连 Supabase（实测可达），Gemini 那一跳由云端函数完成。
 
 如果用户希望先做别的，按性价比排序的备选：
-1. AI 调用失败的用户提示（见第 10 节 P1，工作量小、体验收益明显；代理已提供中性错误码可直接消费）
+1. AI 调用失败的用户提示（见第 10 节 P1，工作量小、体验收益明显；**任务 2 已把错误码铺好，现在是最省力的时机**）
 2. 简历存储修复（P0-2，先落 IndexedDB 也比死链好）
 3. localStorage 健壮性三处（P0-3 / P0-4）
 4. `App.tsx` 拆分（分叉前单项价值最高，但工作量最大，建议在有测试后做）
@@ -544,9 +557,29 @@ Gemini 允许顶层数组，但 OpenAI 的 structured outputs 等不允许。`ma
 
 **云端已实测（任务 1b）：** 见第 12 节表格。`parseResume` 与 `matchTalentToJob` 两个真实 Gemini 调用成功，**返回内容与构造的测试数据逐字一致 → schema 被 Gemini 正确遵守**。自由 prompt 拒绝、大小上限、CORS、`verify_jwt` 云端复验通过。日志无 PII 由用户在网页后台人工核查确认。
 
-**仍未覆盖的两项：**
+**客户端已实测（任务 2，全部通过真实 `aiService.ts` 模块，不是手写模拟）：**
+
+| 验收项 | 结果 |
+|---|---|
+| 产物无 key | ✅ 283,563 字节，6 类密钥模式零命中，无 `generativelanguage.googleapis.com` |
+| 四个任务端到端 | ✅ 全部 200：`parseResume` 4.0s、`matchTalentToJob` 4.8s、`analyzeJD` 5.5s、`generateInterviewQuestions` 8.5s |
+| `analyzeJD` / `generateInterviewQuestions` | ✅ **首次端到端验证**（旧代码从未调用过），信封解包正确返回数组 |
+| `parseResume` 正确性 | ✅ 返回姓名与构造 PDF **逐字一致** |
+| publishable key 通过网关 | ✅ **关键未知项已排除**：`sb_publishable_…` 不是 JWT，但 `verify_jwt=true` 的网关接受它 |
+| 错误兜底 | ✅ 7MB → 代理 413 → 客户端返回 `null` 而非抛出 |
+| 缺环境变量 | ✅ `NOT_CONFIGURED`，1ms 内失败，**不发网络请求** |
+| 空候选人列表 | ✅ 0ms 短路，不发请求 |
+| MIME 前后端对齐 | ✅ pdf/png/jpeg/webp/heic/heif 放行，gif/bmp/doc 本地拒绝 |
+| dev 模式 | ✅ `VITE_` 变量正常注入（已不用 `loadEnv`），无 key 泄漏 |
+| 客户端日志无 PII | ✅ 只输出错误码（如 `PAYLOAD_TOO_LARGE`），不输出消息或内容 |
+| 无 `process` 崩溃风险 | ✅ 删 `define` 后产物内 6 处 `process` 全在 `typeof process=="object"` 守卫内（React 自带） |
+
+测试数据全部构造：721 字节手工 PDF（虚构 `Testcase Bravo` / `example.invalid` / `555-0177`）+ 虚构候选人。临时文件已删除。
+
+**仍未覆盖的三项：**
 1. **云端超时路径**：云端出网正常，无法自然触发 60 秒超时。本地已验证映射正确，风险判断为低
 2. **云端限流**：未在云端压测。且如安全姿态所述，内存态限流在水平扩展的 Edge 实例上本就比常量宽松，云端实测意义有限
+3. **真实浏览器 / Capacitor 设备内未点击验证**（任务 2）：类型检查、构建、dev server、以及通过真实模块的四个任务调用都通过了，但**没有人在浏览器里实际点过一次上传简历**。CORS 白名单里的 `capacitor://localhost` 与 `https://localhost` **仍未在真机验证过**（见 `index.ts` 注释）
 
 ### 与分叉方向的关系（第 5 节）
 
