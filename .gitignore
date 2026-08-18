@@ -1,4 +1,11 @@
+# ---------------------------------------------------------------------------
+# Dependencies
+# ---------------------------------------------------------------------------
+node_modules
+
+# ---------------------------------------------------------------------------
 # Logs
+# ---------------------------------------------------------------------------
 logs
 *.log
 npm-debug.log*
@@ -7,28 +14,115 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
+# ---------------------------------------------------------------------------
+# Web build output
+# NOTE: the Vite bundle inlines env values at build time, so build output must
+# never be committed. See docs handoff for the server-side-proxy plan.
+# ---------------------------------------------------------------------------
 dist
 dist-ssr
+.vite/
+*.tsbuildinfo
+
+# ---------------------------------------------------------------------------
+# Environment files
+# Only .env.example (placeholder values, no real secrets) may be committed.
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
 *.local
 
-# Editor directories and files
+# ---------------------------------------------------------------------------
+# Credentials, keys and signing material
+# ---------------------------------------------------------------------------
+*.pem
+*.key
+*.p8
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.cer
+*.certSigningRequest
+*.mobileprovision
+google-services.json
+GoogleService-Info.plist
+secrets.*
+*secret*.json
+*credentials*.json
+service-account*.json
+
+# ---------------------------------------------------------------------------
+# Capacitor: generated web assets copied into the native projects.
+# The platform-level .gitignore files (android/.gitignore, ios/.gitignore)
+# already cover these; repeated here explicitly as a second line of defence,
+# because these copies contain the built bundle.
+# ---------------------------------------------------------------------------
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+android/app/src/main/res/xml/config.xml
+android/capacitor-cordova-android-plugins/
+ios/App/App/public/
+ios/App/App/capacitor.config.json
+ios/App/App/config.xml
+ios/capacitor-cordova-ios-plugins/
+
+# ---------------------------------------------------------------------------
+# Android build artifacts
+# (android/.gitignore already ignores .gradle/ and build/ inside android/)
+# ---------------------------------------------------------------------------
+android/local.properties
+*.apk
+*.aab
+*.aar
+*.ap_
+*.dex
+*.hprof
+
+# ---------------------------------------------------------------------------
+# iOS / Xcode build artifacts
+# (ios/.gitignore already ignores App/build, App/Pods, App/output)
+# ---------------------------------------------------------------------------
+DerivedData/
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+.swiftpm/
+
+# ---------------------------------------------------------------------------
+# Editor and IDE
+# ---------------------------------------------------------------------------
 .vscode/*
 !.vscode/extensions.json
 .idea
-.DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
 
-# Local Env Files
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+# ---------------------------------------------------------------------------
+# OS files
+# ---------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
 
+# ---------------------------------------------------------------------------
+# Test / coverage / temp
+# ---------------------------------------------------------------------------
+coverage/
+.nyc_output/
+*.tmp
+*.temp
+.cache/
+
+# ---------------------------------------------------------------------------
 # Sandbox
+# ---------------------------------------------------------------------------
 mobile-sandbox/
-
