@@ -16,6 +16,7 @@ import {
   XCircle,
   Clock,
   Upload,
+  Download,
   Paperclip,
   X,
   Loader2,
@@ -43,6 +44,7 @@ import {
   Edit3,
   Type as TypeIcon,
   List,
+  Menu,
   UserSearch,
   School,
   FileUp,
@@ -110,6 +112,7 @@ const App: React.FC = () => {
   const [matchingJobId, setMatchingJobId] = useState<string>('');
   const [matchingResults, setMatchingResults] = useState<TalentMatchResult[]>([]);
   const [isMatchingLoading, setIsMatchingLoading] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Remarks/Notes States for Kanban
   const [editingNotesId, setEditingNotesId] = useState<string | null>(null);
@@ -493,10 +496,59 @@ const App: React.FC = () => {
     return jobs.find(j => j.id === viewingJobDetailId);
   }, [jobs, viewingJobDetailId]);
 
+  // Data Export/Import Handler
+  const handleExportData = () => {
+    const data = {
+      jobs,
+      candidates,
+      exportDate: new Date().toISOString(),
+      version: '1.0'
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `hireflow_backup_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportData = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target?.result as string);
+        if (data.jobs && Array.isArray(data.jobs)) setJobs(data.jobs);
+        if (data.candidates && Array.isArray(data.candidates)) setCandidates(data.candidates);
+        alert('数据恢复成功！');
+      } catch (error) {
+        alert('文件格式错误，无法恢复数据');
+      }
+    };
+    reader.readAsText(file);
+  };
+
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-screen overflow-hidden bg-slate-50">
+      {/* Mobile Menu Overlay */}
+      {isMobileMenuOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/50 z-40 md:hidden"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col shrink-0">
+      <aside className={`
+        fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 text-slate-300 flex flex-col shrink-0 transform transition-transform duration-300 ease-in-out
+        md:relative md:translate-x-0
+        ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
+      `}>
         <div className="p-6 border-b border-slate-800 flex items-center gap-3">
           <div className="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-500/20">
             <TrendingUp className="text-white size-5" />
@@ -520,7 +572,23 @@ const App: React.FC = () => {
             </button>
           ))}
         </nav>
-        <div className="p-4 border-t border-slate-800">
+        <div className="p-4 border-t border-slate-800 space-y-4">
+          <div className="flex items-center gap-2 px-2">
+             <button 
+               onClick={handleExportData}
+               className="flex-1 flex flex-col items-center gap-1 p-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors text-xs text-slate-400 hover:text-white"
+               title="导出数据备份"
+             >
+               <Download size={16} />
+               <span>备份数据</span>
+             </button>
+             <label className="flex-1 flex flex-col items-center gap-1 p-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors text-xs text-slate-400 hover:text-white cursor-pointer" title="恢复数据备份">
+               <Upload size={16} />
+               <span>恢复数据</span>
+               <input type="file" accept=".json" onChange={handleImportData} className="hidden" />
+             </label>
+          </div>
+
           <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
             <p className="text-xs font-semibold uppercase text-slate-500 mb-2 tracking-wider">当前流程进度</p>
             <div className="flex items-center justify-between">
@@ -538,14 +606,22 @@ const App: React.FC = () => {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-16 bg-white border-b flex items-center justify-between px-8 shadow-sm z-10 shrink-0">
-          <h1 className="text-lg font-bold text-slate-800 tracking-wide">
-            {activeTab === 'dashboard' && '数据分析仪表盘'}
-            {activeTab === 'jobs' && '职位库与需求管理'}
-            {activeTab === 'pipeline' && '招聘 SOP 操作看板'}
-            {activeTab === 'talent-pool' && '人才储备管理'}
-          </h1>
+      <main className="flex-1 flex flex-col overflow-hidden w-full">
+        <header className="h-16 bg-white border-b flex items-center justify-between px-4 md:px-8 shadow-sm z-10 shrink-0">
+          <div className="flex items-center gap-3">
+            <button 
+              className="md:hidden p-2 -ml-2 text-slate-500 hover:bg-slate-100 rounded-lg"
+              onClick={() => setIsMobileMenuOpen(true)}
+            >
+              <Menu size={20} />
+            </button>
+            <h1 className="text-lg font-bold text-slate-800 tracking-wide truncate max-w-[200px] md:max-w-none">
+              {activeTab === 'dashboard' && '数据分析仪表盘'}
+              {activeTab === 'jobs' && '职位库与需求管理'}
+              {activeTab === 'pipeline' && '招聘 SOP 操作看板'}
+              {activeTab === 'talent-pool' && '人才储备管理'}
+            </h1>
+          </div>
           <div className="flex items-center gap-4">
             <div className="relative group">
               <Search className={`absolute left-3 top-1/2 -translate-y-1/2 transition-colors ${searchTerm ? 'text-indigo-500' : 'text-slate-400'}`} size={16} />
@@ -566,62 +642,62 @@ const App: React.FC = () => {
           </div>
         </header>
 
-        <div className="flex-1 overflow-auto p-8 bg-slate-50/50">
+        <div className="flex-1 overflow-auto p-4 md:p-8 bg-slate-50/50">
           {/* DASHBOARD - Reverted to Template 1 */}
           {activeTab === 'dashboard' && (
-            <div className="space-y-8 animate-in fade-in duration-500">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow relative">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="p-3 rounded-xl bg-blue-50 text-blue-600"><FileText size={24}/></div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">累计简历</span>
+            <div className="space-y-8 animate-in fade-in duration-500 pb-20 md:pb-0">
+              <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+                <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow relative">
+                  <div className="flex items-center justify-between mb-3 md:mb-4">
+                    <div className="p-2 md:p-3 rounded-xl bg-blue-50 text-blue-600"><FileText size={20} className="md:w-6 md:h-6"/></div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden md:inline">累计简历</span>
                   </div>
-                  <div className="text-3xl font-bold text-slate-900">{stats.total}</div>
-                  <div className="text-xs text-slate-400 mt-1">有效人才沉淀</div>
+                  <div className="text-2xl md:text-3xl font-bold text-slate-900">{stats.total}</div>
+                  <div className="text-xs text-slate-400 mt-1 truncate">有效人才沉淀</div>
                 </div>
 
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="p-3 rounded-xl bg-emerald-50 text-emerald-600"><CheckCircle size={24}/></div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">已入职</span>
+                <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
+                  <div className="flex items-center justify-between mb-3 md:mb-4">
+                    <div className="p-2 md:p-3 rounded-xl bg-emerald-50 text-emerald-600"><CheckCircle size={20} className="md:w-6 md:h-6"/></div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden md:inline">已入职</span>
                   </div>
-                  <div className="text-3xl font-bold text-slate-900">{stats.hired}</div>
-                  <div className="text-xs text-slate-400 mt-1">本年度目标 24/50</div>
+                  <div className="text-2xl md:text-3xl font-bold text-slate-900">{stats.hired}</div>
+                  <div className="text-xs text-slate-400 mt-1 truncate">本年度目标 24/50</div>
                 </div>
 
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="p-3 rounded-xl bg-cyan-50 text-cyan-600"><Database size={24}/></div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">人才储备</span>
+                <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
+                  <div className="flex items-center justify-between mb-3 md:mb-4">
+                    <div className="p-2 md:p-3 rounded-xl bg-cyan-50 text-cyan-600"><Database size={20} className="md:w-6 md:h-6"/></div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden md:inline">人才储备</span>
                   </div>
-                  <div className="text-3xl font-bold text-slate-900">{stats.backup}</div>
-                  <div className="text-xs text-slate-400 mt-1">随时可激活</div>
+                  <div className="text-2xl md:text-3xl font-bold text-slate-900">{stats.backup}</div>
+                  <div className="text-xs text-slate-400 mt-1 truncate">随时可激活</div>
                 </div>
 
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="p-3 rounded-xl bg-amber-50 text-amber-600"><TrendingUp size={24}/></div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">面试通过率</span>
+                <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
+                  <div className="flex items-center justify-between mb-3 md:mb-4">
+                    <div className="p-2 md:p-3 rounded-xl bg-amber-50 text-amber-600"><TrendingUp size={20} className="md:w-6 md:h-6"/></div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden md:inline">面试通过率</span>
                   </div>
-                  <div className="text-3xl font-bold text-slate-900">42%</div>
-                  <div className="text-xs text-emerald-500 mt-1 font-bold">同比上月提升 5%</div>
+                  <div className="text-2xl md:text-3xl font-bold text-slate-900">42%</div>
+                  <div className="text-xs text-emerald-500 mt-1 font-bold truncate">同比上月提升 5%</div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
                 {/* AI Recruitment Insights */}
-                <div className="lg:col-span-2 bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
-                  <div className="flex items-center justify-between">
+                <div className="lg:col-span-2 bg-white p-6 md:p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
                        <MessageSquare className="text-indigo-500" size={20} />
                        <h3 className="font-bold text-slate-800">AI 招聘洞察 & 策略生成</h3>
                     </div>
-                    <button className="px-4 py-1.5 bg-indigo-50 text-indigo-600 text-xs font-bold rounded-lg hover:bg-indigo-100 transition-colors">
+                    <button className="w-full md:w-auto px-4 py-2 md:py-1.5 bg-indigo-50 text-indigo-600 text-xs font-bold rounded-lg hover:bg-indigo-100 transition-colors">
                       生成最新诊断
                     </button>
                   </div>
-                  <div className="bg-slate-50 border border-slate-100 rounded-2xl p-6 flex items-start gap-4">
-                     <div className="p-2 bg-indigo-500 text-white rounded-lg"><TrendingUp size={16} /></div>
+                  <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 md:p-6 flex items-start gap-4">
+                     <div className="p-2 bg-indigo-500 text-white rounded-lg shrink-0"><TrendingUp size={16} /></div>
                      <p className="text-sm text-slate-600 leading-relaxed">
                         点击“生成最新诊断”按钮，利用 AI 分析当前职位的招聘策略与候选人评估点。系统将自动提取核心技能关键词。
                      </p>
@@ -629,7 +705,7 @@ const App: React.FC = () => {
                 </div>
 
                 {/* Channel Ranking */}
-                <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
+                <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
                   <div className="flex items-center gap-3">
                     <BarChart className="text-indigo-500" size={20} />
                     <h3 className="font-bold text-slate-800">渠道转化排行</h3>
@@ -660,21 +736,21 @@ const App: React.FC = () => {
           {/* PIPELINE VIEW */}
           {activeTab === 'pipeline' && (
             <div className="h-full flex flex-col gap-6 animate-in slide-in-from-bottom-4 duration-500">
-              <div className="flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-3">
-                  <div className="bg-white px-4 py-2 rounded-xl border shadow-sm flex items-center gap-3">
-                    <Filter size={14} className="text-indigo-500" />
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center shrink-0 gap-4">
+                <div className="flex items-center gap-3 w-full md:w-auto">
+                  <div className="bg-white px-4 py-2 rounded-xl border shadow-sm flex items-center gap-3 w-full md:w-auto">
+                    <Filter size={14} className="text-indigo-500 shrink-0" />
                     <select 
                       value={selectedJobId} 
                       onChange={(e) => setSelectedJobId(e.target.value)} 
-                      className="text-sm bg-transparent border-none outline-none font-bold text-slate-700"
+                      className="text-sm bg-transparent border-none outline-none font-bold text-slate-700 w-full md:w-auto"
                     >
                       <option value="all">所有职位看板</option>
                       {jobs.filter(j => j.status === 'OPEN').map(j => <option key={j.id} value={j.id}>{j.title}</option>)}
                     </select>
                   </div>
                 </div>
-                <button onClick={() => { setCandidateForm({...candidateForm, isPoolDirect: false, resumeFile: null, notes: '', jobId: ''}); setIsAddingCandidate(true); setEditingCandidateId(null); }} className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all active:scale-95">
+                <button onClick={() => { setCandidateForm({...candidateForm, isPoolDirect: false, resumeFile: null, notes: '', jobId: ''}); setIsAddingCandidate(true); setEditingCandidateId(null); }} className="w-full md:w-auto flex justify-center items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all active:scale-95">
                   <Plus size={18} /> 录入候选人
                 </button>
               </div>
@@ -847,18 +923,18 @@ const App: React.FC = () => {
           {/* JOBS VIEW */}
           {activeTab === 'jobs' && (
             <div className="space-y-8 animate-in fade-in duration-500 h-full flex flex-col">
-              <div className="flex justify-between items-center shrink-0">
+              <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 shrink-0">
                 <div>
                   <h2 className="text-2xl font-bold text-slate-800 tracking-tight">招聘需求 & JD 管理</h2>
                   <p className="text-sm text-slate-500 mt-1 font-medium">清晰划分正式 HC 与实习生资源</p>
                 </div>
-                <button onClick={() => setIsAddingJob(true)} className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-3 rounded-xl font-bold shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95">
+                <button onClick={() => setIsAddingJob(true)} className="w-full md:w-auto flex items-center justify-center gap-2 bg-indigo-600 text-white px-5 py-3 rounded-xl font-bold shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95">
                   <Plus size={20} /> 发布新职位
                 </button>
               </div>
 
-              <div className="flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-2 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="flex items-center justify-between shrink-0 overflow-x-auto pb-2">
+                <div className="flex items-center gap-2 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm min-w-max">
                   <button onClick={() => setJobStatusFilter('OPEN')} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${jobStatusFilter === 'OPEN' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>
                     <PlayCircle size={18}/> 正在进行
                   </button>
@@ -1013,7 +1089,7 @@ const App: React.FC = () => {
               </div>
 
               {Object.entries(talentPoolGroups).length > 0 ? (
-                Object.entries(talentPoolGroups).map(([dept, people]) => (
+                Object.entries(talentPoolGroups).map(([dept, people]: [string, any[]]) => (
                   <div key={dept} className="space-y-4">
                     <div className="flex items-center gap-3">
                       <div className="h-px bg-slate-200 flex-1"></div>
